@@ -99,7 +99,7 @@ const B={
  jager:  {n:'Jagershut',e:'🏹',cost:{hout:15},jobs:2,d:'Jagers schieten op wilde dieren in de buurt. Zet hem bij het bos!'},
  put:    {n:'Waterput',e:'🪣',cost:{steen:8},joy:6,d:'+6 geluk.'},
  park:   {n:'Park',e:'🌳',cost:{hout:6},joy:3,d:'+3 geluk.'},
- weg:    {n:'Weg',e:'🟫',cost:{steen:1},d:'Mooie kasseiweg.'},
+ weg:    {n:'Weg / brug',e:'🟫',cost:{steen:1},d:'Mooie kasseiweg. Op het water wordt het een houten brug. Je kunt later gewoon gebouwen op je weg zetten.'},
  bakker: {n:'Bakkerij',e:'🥖',cost:{hout:20,steen:15},jobs:2,prod:{eten:2.6},joy:3,d:'Veel eten en +3 geluk. 2 werkers.'},
  steenhuis:{n:'Stenen huis',e:'🏘️',cost:{hout:10,steen:25,goud:10},cap:8,d:'Plaats voor 8 dorpelingen.'},
  markt:  {n:'Markt',e:'🏪',cost:{hout:25,steen:20},jobs:2,gold:.06,joy:5,d:'Verdient goud per dorpeling. +5 geluk.'},
@@ -272,7 +272,7 @@ const MODELS={
   const t=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.06,10),M({color:0xd8c8a0}));t.rotation.x=Math.PI/2;t.position.set(.5,.35,-.6);g.add(t);const t2=new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.065,10),mat.red);t2.rotation.x=Math.PI/2;t2.position.set(.5,.35,-.6);g.add(t2)},
  put(g){cyl(g,.38,.4,.4,mat.stone,0,0,0,14);const w=new THREE.Mesh(new THREE.CircleGeometry(.3,14),mat.water);w.rotation.x=-Math.PI/2;w.position.y=.35;g.add(w);box(g,.06,.7,.06,mat.trunk,-.32,.3,0);box(g,.06,.7,.06,mat.trunk,.32,.3,0);gable(g,.8,.5,.25,mat.roof,0,1,0,Math.PI/2)},
  park(g){box(g,1.9,.03,1.9,M({color:0x6aae4a}));tree(g,-.45,-.4,.9);tree(g,.5,.45,.75);box(g,.6,.05,.18,mat.wood,.2,.22,-.4);box(g,.05,.22,.15,mat.dark,-.05,0,-.4);box(g,.05,.22,.15,mat.dark,.45,0,-.4);for(let i=0;i<6;i++){const f=new THREE.Mesh(new THREE.SphereGeometry(.05,6,4),M({color:[0xff5a7a,0xffd23f,0xb070ff][i%3]}));f.position.set(-.7+i*.12,.06,.7);g.add(f)}},
- weg(g){box(g,2,.04,2,mat.cobble)},
+ weg(g,b){if(b&&S.tiles[idx(b.i,b.j)]===3){box(g,2,.08,1.3,mat.wood,0,.12,0);for(const z of[-.62,.62]){box(g,2,.05,.05,mat.trunk,0,.45,z);for(const x of[-.9,-.3,.3,.9])box(g,.06,.35,.06,mat.trunk,x,.15,z)}for(const x of[-.7,.7])for(const z of[-.5,.5])box(g,.1,.25,.1,mat.trunk,x,-.1,z);return}box(g,2,.04,2,mat.cobble)},
  bakker(g){box(g,1.3,.9,1,mat.plaster);gable(g,1.45,1.15,.55,mat.roof,0,.9,0);win(g,-.35,.5,.501,0,.4,.3);door(g,.3,.501);cyl(g,.12,.14,.7,mat.brick,.45,.9,-.25);const s=new THREE.Mesh(new THREE.PlaneGeometry(.5,.16),mat.gold);s.position.set(0,.8,.505);g.add(s)},
  markt(g){box(g,1.9,.04,1.9,mat.cobble);const cols=[mat.red,mat.blue,M({color:0x3a8a4a}),mat.flag];
   [[-.5,-.45],[.5,-.45],[-.5,.45],[.5,.45]].forEach(([x,z],i)=>{box(g,.7,.35,.4,mat.wood,x,0,z);for(const dx of[-.3,.3])box(g,.04,.7,.04,mat.trunk,x+dx,0,z-.15);const r=new THREE.Mesh(new THREE.BoxGeometry(.8,.04,.55),cols[i]);r.position.set(x,.72,z);r.rotation.x=.25;r.castShadow=true;g.add(r)});
@@ -372,7 +372,7 @@ function addScaffold(g){const s=new THREE.Group();s.name='scaf';for(const[x,z]of
   const fill=new THREE.Mesh(new THREE.PlaneGeometry(1.56,.1),new THREE.MeshBasicMaterial({color:0xffcf5a,depthTest:false}));fill.position.set(0,2.3,.001);fill.renderOrder=6;s.add(fill);s.userData.fill=fill;s.userData.bar=bar;
   g.add(s);g.userData.scaf=s}
 const FP={kasteel:1};const SC={huis:1.35,steenhuis:1.3,bakker:1.3,smid:1.3,kerk:1.2,toren:1.15,kasteel:1,hakker:1.3,kamp:1.2,put:1.1,visser:1.1};
-function addBldMesh(b){const g=new THREE.Group();const inner=new THREE.Group();MODELS[b.t](inner);inner.scale.setScalar(SC[b.t]||1);g.userData.sc=SC[b.t]||1;g.add(inner);g.userData.inner=inner;foot(b.t,b.i,b.j,refreshTufts);if(!done(b)){addScaffold(g);if(FP[b.t]){g.userData.scaf.scale.set(3,2.2,3)}}g.position.set(tx(b.i),0,tz(b.j));g.rotation.y=b.r||0;
+function addBldMesh(b){const g=new THREE.Group();const inner=new THREE.Group();MODELS[b.t](inner,b);inner.scale.setScalar(SC[b.t]||1);g.userData.sc=SC[b.t]||1;g.add(inner);g.userData.inner=inner;foot(b.t,b.i,b.j,refreshTufts);if(!done(b)){addScaffold(g);if(FP[b.t]){g.userData.scaf.scale.set(3,2.2,3)}}g.position.set(tx(b.i),0,tz(b.j));g.rotation.y=b.r||0;
   g.traverse(o=>{if(o.isMesh&&o.material===mat.window){o.material=mat.window}});
   world.add(g);bldObj.set(b,g);return g}
 
@@ -391,9 +391,9 @@ function tileAt(cx,cy){mouse.set(cx/innerWidth*2-1,-cy/innerHeight*2+1);ray.setF
   const i=Math.floor(p.x/TS+N/2),j=Math.floor(p.z/TS+N/2);return inMap(i,j)?{i,j}:null}
 const bAt=(i,j)=>S.bld.find(b=>{const r=FP[b.t]||0;return Math.abs(b.i-i)<=r&&Math.abs(b.j-j)<=r});
 const foot=(t,i,j,fn)=>{const r=FP[t]||0;for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)fn(i+a,j+b)};
-function canPlace(t,i,j){let why=null;foot(t,i,j,(a,b)=>{if(why)return;if(!inMap(a,b)){why='Buiten de kaart';return}if(bAt(a,b)){why='Hier staat al iets';return}const v=S.tiles[idx(a,b)];
-  if(v===1)why='Kap eerst de bomen (🪵)';else if(v===2)why='Hier liggen rotsen';else if(v===3)why='Dit is water'});if(why)return FP[t]?why+' (het kasteel is 3×3 vakjes)':why;
-  if(t==='visser'&&!near(i,j,1,3))return'Moet naast het water staan';
+function canPlace(t,i,j){let why=null;foot(t,i,j,(a,b)=>{if(why)return;if(!inMap(a,b)){why='Buiten de kaart';return}const ex=bAt(a,b);if(ex&&!(ex.t==='weg'&&t!=='weg')){why='Hier staat al iets';return}const v=S.tiles[idx(a,b)];
+  if(v===1)why='Kap eerst de bomen (🪵)';else if(v===2)why='Hier liggen rotsen';else if(v===3&&t!=='weg')why='Dit is water'});if(why)return FP[t]?why+' (het kasteel is 3×3 vakjes)':why;
+  if(t!=='weg'&&S.tiles[idx(i,j)]===3)return'Dit is water';if(t==='visser'&&!near(i,j,1,3))return'Moet naast het water staan';
   for(const[k,a]of Object.entries(B[t].cost))if(S[k]<a)return'Niet genoeg '+k;return null}
 function near(i,j,r,v){for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)if((a||b)&&inMap(i+a,j+b)&&S.tiles[idx(i+a,j+b)]===v)return true;return false}
 function nearCount(i,j,r,v){let n=0;for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)if(inMap(i+a,j+b)&&S.tiles[idx(i+a,j+b)]===v)n++;return n}
@@ -427,6 +427,7 @@ function click(t){if(!t)return;const{i,j}=t;
   if(tool==='sloop'){const b=bAt(i,j);if(!b)return;if(b.t==='kamp'){msg('Het kampvuur blijft staan');return}
     S.bld.splice(S.bld.indexOf(b),1);world.remove(bldObj.get(b));bldObj.delete(b);foot(b.t,b.i,b.j,refreshTufts);pay(B[b.t].cost,-.5);sfx(90);save();return}
   const why=canPlace(tool,i,j);if(why){msg(why);return}
+  foot(tool,i,j,(a,c)=>{const w=bAt(a,c);if(w&&w.t==='weg'){S.bld.splice(S.bld.indexOf(w),1);world.remove(bldObj.get(w));bldObj.delete(w)}});
   pay(B[tool].cost);const b={t:tool,i,j,r:(Math.round(cam.yaw/(Math.PI/2))*Math.PI/2),prog:0};S.bld.push(b);addBldMesh(b);sfx(520);save();
   msg('👑 De koning beveelt: bouw een '+B[tool].n.toLowerCase()+'!');
   if(!keys.ShiftLeft&&!keys.ShiftRight&&!['weg','park','huis','kap'].includes(tool))setTool(null)}
