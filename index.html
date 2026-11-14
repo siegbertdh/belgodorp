@@ -76,15 +76,20 @@ canvas{display:block}
   <p style="font-size:12px;margin:12px 0 0">♛ Belgorac · Maker: Mattis D'Haese · Je dorp wordt automatisch bewaard</p>
 </div></div>
 
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 
 /* ================= DATA ================= */
 const N=34, TS=2;                          // kaart N×N tegels
 const RES=[['hout','🪵'],['steen','🪨'],['eten','🍞'],['goud','🪙']];
 const B={
- kamp:   {n:'Koningstent',e:'👑',cost:{},cap:2,hidden:1,d:'Hier woont de koning, tot het kasteel klaar is.'},
+ kamp:   {n:'Koningstent',e:'👑',cost:{},cap:5,hidden:1,d:'Hier woont de koning, tot het kasteel klaar is.'},
  huis:   {n:'Huisje',e:'🏠',cost:{hout:10},cap:4,d:'Plaats voor 4 dorpelingen.'},
  boer:   {n:'Boerderij',e:'🌾',cost:{hout:15},jobs:2,prod:{eten:1.3},d:'Maakt eten. 2 werkers.'},
  hakker: {n:'Houthakker',e:'🪓',cost:{hout:8},jobs:2,prod:{hout:.6},d:'Maakt hout. Meer hout met bomen in de buurt.'},
@@ -123,7 +128,7 @@ const GOALS=[
 /* ================= STATE ================= */
 let S;
 function fresh(){
-  const s={servants:2,hout:40,steen:5,eten:30,goud:0,pop:2,time:9*60,goal:0,seed:Math.random()*1000|0,tiles:[],bld:[]};
+  const s={servants:2,hout:40,steen:5,eten:40,goud:0,pop:5,time:9*60,goal:0,seed:Math.random()*1000|0,tiles:[],bld:[]};
   return s;
 }
 const done=b=>b.prog==null||b.prog>=1;
@@ -143,6 +148,13 @@ const hemi=new THREE.HemisphereLight(0xdfeaff,0x5b4a30,.9);scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff0d0,2.4);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
 Object.assign(sun.shadow.camera,{left:-45,right:45,top:45,bottom:-45,near:1,far:200});sun.shadow.bias=-.0005;sun.shadow.normalBias=.03;
 scene.add(sun,sun.target);
+const rt=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{type:THREE.HalfFloatType,samples:4});
+const composer=new EffectComposer(renderer,rt);composer.setPixelRatio(Math.min(devicePixelRatio,2));composer.setSize(innerWidth,innerHeight);
+composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.35,.5,.92);composer.addPass(bloom);
+composer.addPass(new OutputPass());
+composer.addPass(new ShaderPass({uniforms:{tDiffuse:{value:null}},vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+ fragmentShader:'uniform sampler2D tDiffuse;varying vec2 vUv;void main(){vec4 c=texture2D(tDiffuse,vUv);vec3 g=c.rgb;float l=dot(g,vec3(.299,.587,.114));g=mix(vec3(l),g,1.12);g=g*vec3(1.02,1.,.97);float v=smoothstep(.95,.35,length(vUv-.5));gl_FragColor=vec4(g*mix(.78,1.,v),1.);}'}));
 
 // textures
 function canvasTex(w,h,fn,rep){const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;if(rep){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rep,rep)}return t}
@@ -173,9 +185,43 @@ const mat={
 
 // ground
 const W=N*TS;
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(W+80,W+80),M({map:grassTex,roughness:1}));
+function hn(x,z){return Math.sin(x*.11)*Math.cos(z*.13)+Math.sin(x*.047+1.3)*Math.sin(z*.053+.7)*1.4+Math.sin((x+z)*.21)*.3}
+function hgt(x,z){const d=Math.max(Math.abs(x),Math.abs(z))-W/2-1;if(d<=0)return 0;return Math.min(1,d/14)**1.6*(4+hn(x,z)*3)+Math.max(0,d-14)*.25}
+const GS=W+240;const gGeo=new THREE.PlaneGeometry(GS,GS,170,170);{const P=gGeo.attributes.position,col=[];const c=new THREE.Color();
+  for(let i=0;i<P.count;i++){const x=P.getX(i),z=-P.getY(i);P.setZ(i,hgt(x,z));const n=hn(x*2.3,z*2.1)*.5+.5;const out=Math.max(Math.abs(x),Math.abs(z))>W/2+1;
+    c.setHSL(.24-n*.04+(out?.02:0),.42+n*.12,(out?.30:.36)+n*.08);col.push(c.r,c.g,c.b)}
+  gGeo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));gGeo.computeVertexNormals()}
+const ground=new THREE.Mesh(gGeo,M({map:grassTex,vertexColors:true,roughness:1}));grassTex.repeat.set(GS/4,GS/4);
 ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
 const grid=new THREE.GridHelper(W,N,0xffffff,0xffffff);grid.material.transparent=true;grid.material.opacity=0;grid.position.y=.03;scene.add(grid);
+// bossen en heuvels rond de kaart
+{const n=2600;const tr=new THREE.InstancedMesh(new THREE.CylinderGeometry(.12,.18,1,5),M({color:0x4a3220}),n);
+ const cr=new THREE.InstancedMesh(new THREE.ConeGeometry(1,2.4,7),M({color:0xffffff}),n);const cr2=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),M({color:0xffffff,flatShading:true}),n);
+ const m=new THREE.Matrix4(),q=new THREE.Quaternion(),c=new THREE.Color();let a=0,b2=0;
+ for(let i=0;i<n;i++){let x,z;do{x=(Math.random()-.5)*(W+150);z=(Math.random()-.5)*(W+150)}while(Math.max(Math.abs(x),Math.abs(z))<W/2+3);
+  const y=hgt(x,z),sc=.8+Math.random()*.9;q.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.random()*6);
+  m.compose(new THREE.Vector3(x,y+.5*sc,z),q,new THREE.Vector3(sc,sc,sc));tr.setMatrixAt(i,m);
+  c.setHSL(.27+Math.random()*.08,.45+Math.random()*.2,.18+Math.random()*.12);
+  if(Math.random()<.6){m.compose(new THREE.Vector3(x,y+sc*2,z),q,new THREE.Vector3(sc*.8,sc,sc*.8));cr.setMatrixAt(a,m);cr.setColorAt(a++,c)}
+  else{m.compose(new THREE.Vector3(x,y+sc*1.8,z),q,new THREE.Vector3(sc*1.1,sc,sc*1.1));cr2.setMatrixAt(b2,m);c.offsetHSL(-.04,0,.05);cr2.setColorAt(b2++,c)}}
+ cr.count=a;cr2.count=b2;for(const o of[tr,cr,cr2]){o.castShadow=o.receiveShadow=true;scene.add(o)}}
+// grasplukjes en bloemen op de kaart
+let tufts=null,flowers=null,tuftTile=[];
+const tuftGeo=new THREE.ConeGeometry(.05,.16,3);tuftGeo.translate(0,.08,0);const flGeo=new THREE.IcosahedronGeometry(.055,0);flGeo.translate(0,.12,0);
+function makeTufts(){if(tufts){scene.remove(tufts,flowers)}const per=7,fper=1,n=N*N*per;
+  tufts=new THREE.InstancedMesh(tuftGeo,M({color:0xffffff}),n);flowers=new THREE.InstancedMesh(flGeo,M({color:0xffffff,emissive:0x222222}),N*N*fper);
+  tuftTile=[];const m=new THREE.Matrix4(),q=new THREE.Quaternion(),c=new THREE.Color();let k=0,f=0;const FC=[0xffffff,0xffd23f,0xff6a8a,0xb88aff,0x8ac8ff];
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){const list=[k,per,f];tuftTile[idx(i,j)]={k,f};
+    for(let a=0;a<per;a++){const sc=.6+Math.random()*.9;q.setFromEuler(new THREE.Euler((Math.random()-.5)*.4,Math.random()*6,(Math.random()-.5)*.4));
+      m.compose(new THREE.Vector3(tx(i)+(Math.random()-.5)*TS,0,tz(j)+(Math.random()-.5)*TS),q,new THREE.Vector3(sc,sc,sc));tufts.setMatrixAt(k,m);c.setHSL(.24+Math.random()*.07,.55,.16+Math.random()*.1);tufts.setColorAt(k++,c)}
+    const p=new THREE.Vector3(tx(i)+(Math.random()-.5)*TS,0,tz(j)+(Math.random()-.5)*TS);m.compose(p,q,new THREE.Vector3(1,1,1));flowers.setMatrixAt(f,m);c.set(FC[Math.random()*FC.length|0]);flowers.setColorAt(f++,c)}
+  tufts.userData.orig=tufts.instanceMatrix.array.slice();flowers.userData.orig=flowers.instanceMatrix.array.slice();
+  tufts.receiveShadow=true;scene.add(tufts,flowers)}
+const ZERO=new THREE.Matrix4().makeScale(0,0,0);
+function refreshTufts(i,j){if(!tufts)return;const T=tuftTile[idx(i,j)];const v=S.tiles[idx(i,j)];const hide=v===3||v===2||!!bAt(i,j);const showFl=!hide&&v===0;
+  for(let a=0;a<7;a++){const k=T.k+a;if(hide)tufts.setMatrixAt(k,ZERO);else tufts.instanceMatrix.array.set(tufts.userData.orig.subarray(k*16,k*16+16),k*16)}
+  if(showFl)flowers.instanceMatrix.array.set(flowers.userData.orig.subarray(T.f*16,T.f*16+16),T.f*16);else flowers.setMatrixAt(T.f,ZERO);
+  tufts.instanceMatrix.needsUpdate=flowers.instanceMatrix.needsUpdate=true}
 // sky
 const skyMat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{top:{value:new THREE.Color()},bot:{value:new THREE.Color()}},
  vertexShader:'varying vec3 p;void main(){p=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
@@ -201,7 +247,7 @@ function door(g,x,z,ry=0){const o=new THREE.Mesh(new THREE.PlaneGeometry(.32,.55
 function tree(g,x,z,s=1){cyl(g,.08*s,.12*s,.6*s,mat.trunk,x,0,z,6);const l=Math.random()<.5?mat.leaf:mat.leaf2;
   if(Math.random()<.5){cone(g,.55*s,1*s,l,x,.45*s,z,7,0);cone(g,.42*s,.8*s,l,x,.95*s,z,7,0)}
   else{const o=new THREE.Mesh(new THREE.IcosahedronGeometry(.55*s,0),l);o.position.set(x,.95*s,z);o.castShadow=true;g.add(o)}}
-function person(g,x,z,c){cyl(g,.07,.1,.32,M({color:c}),x,0,z,6);const h=new THREE.Mesh(new THREE.SphereGeometry(.075,8,6),M({color:0xe8c39e}));h.position.set(x,.4,z);g.add(h)}
+function person(g,x,z,c){cyl(g,.045,.06,.2,M({color:c}),x,0,z,6);const h=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),M({color:0xe8c39e}));h.position.set(x,.25,z);g.add(h)}
 
 const MODELS={
  kamp(g){const st=new THREE.Mesh(new THREE.CylinderGeometry(.75,.75,.6,16),M({map:canvasTex(128,32,(x,w,h)=>{for(let i=0;i<8;i++){x.fillStyle=i%2?'#f3ecd8':'#a8282a';x.fillRect(i*16,0,16,h)}})}));st.position.set(-.1,.3,-.35);st.castShadow=true;g.add(st);
@@ -267,20 +313,30 @@ function buildTileMesh(i,j){
   if(v===1){const n=1+(Math.random()*2|0);for(let a=0;a<n;a++)tree(g,(Math.random()-.5)*1.1,(Math.random()-.5)*1.1,.85+Math.random()*.5)}
   if(v===2){for(let a=0;a<3;a++){const o=new THREE.Mesh(new THREE.DodecahedronGeometry(.3+Math.random()*.35,0),mat.rock);o.position.set((Math.random()-.5)*1.1,.15,(Math.random()-.5)*1.1);o.rotation.set(Math.random()*3,Math.random()*3,0);o.castShadow=o.receiveShadow=true;g.add(o)}}
   world.add(g);tileObj[k]=g}
-function buildWater(){waterMeshes.forEach(m=>world.remove(m));waterMeshes=[];
-  const geo=new THREE.PlaneGeometry(TS,TS);
-  const sand=new THREE.PlaneGeometry(TS*1.25,TS*1.25);
-  for(let j=0;j<N;j++)for(let i=0;i<N;i++)if(S.tiles[idx(i,j)]===3){
-    const s=new THREE.Mesh(sand,mat.sand);s.rotation.x=-Math.PI/2;s.position.set(tx(i),.01,tz(j));s.receiveShadow=true;world.add(s);waterMeshes.push(s);}
-  for(let j=0;j<N;j++)for(let i=0;i<N;i++)if(S.tiles[idx(i,j)]===3){
-    const m=new THREE.Mesh(geo,mat.water);m.rotation.x=-Math.PI/2;m.position.set(tx(i),.05,tz(j));world.add(m);waterMeshes.push(m)}}
+const MS=16;
+const waterMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{mask:{value:null},t:{value:0},deep:{value:new THREE.Color(0x1f5f8a)},shallow:{value:new THREE.Color(0x4fb0c0)},lite:{value:1}},
+ vertexShader:'varying vec2 vUv;varying vec3 wp;void main(){vUv=uv;vec4 w=modelMatrix*vec4(position,1.);wp=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
+ fragmentShader:`uniform sampler2D mask;uniform float t,lite;uniform vec3 deep,shallow;varying vec2 vUv;varying vec3 wp;
+ void main(){float m=texture2D(mask,vUv).r;if(m<.5)discard;float e=smoothstep(.5,.85,m);vec3 c=mix(shallow,deep,e);
+  float w=sin(wp.x*1.7+t*1.3)*sin(wp.z*1.3-t*1.1)+sin(wp.x*.7-wp.z*1.1+t*.8)*.6;c+=smoothstep(.9,1.6,w)*.18;
+  float sp=fract(sin(dot(floor(wp.xz*6.),vec2(12.9,78.2)))*43758.5);c+=step(.985,sp)*smoothstep(.3,1.,sin(t*3.+sp*40.))*.5;
+  float foam=1.-smoothstep(.5,.57+.03*sin(wp.x*5.+t*2.),m);c=mix(c,vec3(.95,.97,1.),foam*.85);gl_FragColor=vec4(c*lite,.9);}`});
+let waterPlane=null,sandPlane=null;
+function buildWater(){if(waterPlane)scene.remove(waterPlane,sandPlane);
+  const c1=document.createElement('canvas');c1.width=c1.height=N*MS;const x=c1.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,N*MS,N*MS);x.fillStyle='#fff';
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++)if(S.tiles[idx(i,j)]===3){x.beginPath();x.arc((i+.5)*MS,(j+.5)*MS,MS*.78,0,7);x.fill()}
+  const mk=(blur)=>{const c=document.createElement('canvas');c.width=c.height=N*MS;const y=c.getContext('2d');y.filter=`blur(${blur}px)`;y.drawImage(c1,0,0);const t=new THREE.CanvasTexture(c);return t};
+  const geo=new THREE.PlaneGeometry(W,W);
+  waterMat.uniforms.mask.value=mk(5);waterPlane=new THREE.Mesh(geo,waterMat);waterPlane.rotation.x=-Math.PI/2;waterPlane.position.y=.06;scene.add(waterPlane);
+  const sm=M({color:0xd9c48c,alphaMap:mk(10),alphaTest:.22,roughness:1});sandPlane=new THREE.Mesh(geo,sm);sandPlane.rotation.x=-Math.PI/2;sandPlane.position.y=.02;sandPlane.receiveShadow=true;scene.add(sandPlane)}
 const scafMat=M({color:0xa07a4a});
-function addScaffold(g){const s=new THREE.Group();s.name='scaf';for(const[x,z]of[[-.85,-.85],[.85,-.85],[-.85,.85],[.85,.85]]){const p=new THREE.Mesh(new THREE.BoxGeometry(.06,1.4,.06),scafMat);p.position.set(x,.7,z);s.add(p)}
-  for(const y of[.5,1.1])for(const[w,d,x,z]of[[1.76,.06,0,-.85],[1.76,.06,0,.85],[.06,1.76,-.85,0],[.06,1.76,.85,0]]){const p=new THREE.Mesh(new THREE.BoxGeometry(w,.05,d),scafMat);p.position.set(x,y,z);s.add(p)}
-  const bar=new THREE.Mesh(new THREE.PlaneGeometry(1.6,.14),new THREE.MeshBasicMaterial({color:0x222222,depthTest:false}));bar.position.y=1.9;bar.renderOrder=5;s.add(bar);
-  const fill=new THREE.Mesh(new THREE.PlaneGeometry(1.56,.1),new THREE.MeshBasicMaterial({color:0xffcf5a,depthTest:false}));fill.position.set(0,1.9,.001);fill.renderOrder=6;s.add(fill);s.userData.fill=fill;s.userData.bar=bar;
+function addScaffold(g){const s=new THREE.Group();s.name='scaf';for(const[x,z]of[[-.85,-.85],[.85,-.85],[-.85,.85],[.85,.85]]){const p=new THREE.Mesh(new THREE.BoxGeometry(.06,1.8,.06),scafMat);p.position.set(x,.9,z);s.add(p)}
+  for(const y of[.5,1.1,1.7])for(const[w,d,x,z]of[[1.76,.06,0,-.85],[1.76,.06,0,.85],[.06,1.76,-.85,0],[.06,1.76,.85,0]]){const p=new THREE.Mesh(new THREE.BoxGeometry(w,.05,d),scafMat);p.position.set(x,y,z);s.add(p)}
+  const bar=new THREE.Mesh(new THREE.PlaneGeometry(1.6,.14),new THREE.MeshBasicMaterial({color:0x222222,depthTest:false}));bar.position.y=2.3;bar.renderOrder=5;s.add(bar);
+  const fill=new THREE.Mesh(new THREE.PlaneGeometry(1.56,.1),new THREE.MeshBasicMaterial({color:0xffcf5a,depthTest:false}));fill.position.set(0,2.3,.001);fill.renderOrder=6;s.add(fill);s.userData.fill=fill;s.userData.bar=bar;
   g.add(s);g.userData.scaf=s}
-function addBldMesh(b){const g=new THREE.Group();const inner=new THREE.Group();MODELS[b.t](inner);g.add(inner);g.userData.inner=inner;if(!done(b))addScaffold(g);g.position.set(tx(b.i),0,tz(b.j));g.rotation.y=b.r||0;
+const SC={huis:1.35,steenhuis:1.3,bakker:1.3,smid:1.3,kerk:1.2,toren:1.15,kasteel:1.15,hakker:1.3,kamp:1.2,put:1.1,visser:1.1};
+function addBldMesh(b){const g=new THREE.Group();const inner=new THREE.Group();MODELS[b.t](inner);inner.scale.setScalar(SC[b.t]||1);g.userData.sc=SC[b.t]||1;g.add(inner);g.userData.inner=inner;refreshTufts(b.i,b.j);if(!done(b))addScaffold(g);g.position.set(tx(b.i),0,tz(b.j));g.rotation.y=b.r||0;
   g.traverse(o=>{if(o.isMesh&&o.material===mat.window){o.material=mat.window}});
   world.add(g);bldObj.set(b,g);return g}
 
@@ -306,7 +362,7 @@ function near(i,j,r,v){for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)if((a||b)&&in
 function nearCount(i,j,r,v){let n=0;for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)if(inMap(i+a,j+b)&&S.tiles[idx(i+a,j+b)]===v)n++;return n}
 function setTool(t){if(t==='bediende')return;tool=tool===t?null:t;[...document.querySelectorAll('.b')].forEach(e=>e.classList.toggle('on',e.dataset.t===tool));
   while(ghost.children.length)ghost.remove(ghost.children[0]);ghostType=null;
-  if(tool&&B[tool]){MODELS[tool](ghost);ghost.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.55;o.castShadow=false}});ghostType=tool}
+  if(tool&&B[tool]){MODELS[tool](ghost);ghost.scale.setScalar(SC[tool]||1);ghost.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.55;o.castShadow=false}});ghostType=tool}
   grid.material.opacity=tool?.12:0;document.getElementById('info').style.display='none'}
 let down=null,dragged=false;
 const cvs=renderer.domElement;
@@ -326,9 +382,9 @@ function pay(c,f=1){for(const[k,a]of Object.entries(c))S[k]-=a*f}
 function hire(){const c=hireCost();for(const[k,a]of Object.entries(c))if(S[k]<a){msg('Niet genoeg '+k+' om een bediende in te huren ('+costTxt(c)+')');return}pay(c);S.servants++;msg('🤵 Nieuwe bediende in dienst! Je hebt er nu '+S.servants+'.');sfx(660);save()}
 function click(t){if(!t)return;const{i,j}=t;
   if(!tool){const b=bAt(i,j);if(b)showInfo(b);else document.getElementById('info').style.display='none';return}
-  if(tool==='kap'){if(S.tiles[idx(i,j)]===1){S.tiles[idx(i,j)]=0;buildTileMesh(i,j);S.hout+=3;floatTxt('+3 🪵',i,j);sfx(300)}else msg('Hier staat geen boom');return}
+  if(tool==='kap'){if(S.tiles[idx(i,j)]===1){S.tiles[idx(i,j)]=0;buildTileMesh(i,j);refreshTufts(i,j);S.hout+=3;floatTxt('+3 🪵',i,j);sfx(300)}else msg('Hier staat geen boom');return}
   if(tool==='sloop'){const b=bAt(i,j);if(!b)return;if(b.t==='kamp'){msg('Het kampvuur blijft staan');return}
-    S.bld.splice(S.bld.indexOf(b),1);world.remove(bldObj.get(b));bldObj.delete(b);pay(B[b.t].cost,-.5);sfx(90);save();return}
+    S.bld.splice(S.bld.indexOf(b),1);world.remove(bldObj.get(b));bldObj.delete(b);refreshTufts(i,j);pay(B[b.t].cost,-.5);sfx(90);save();return}
   const why=canPlace(tool,i,j);if(why){msg(why);return}
   pay(B[tool].cost);const b={t:tool,i,j,r:(Math.round(cam.yaw/(Math.PI/2))*Math.PI/2),prog:0};S.bld.push(b);addBldMesh(b);sfx(520);save();
   msg('👑 De koning beveelt: bouw een '+B[tool].n.toLowerCase()+'!');
@@ -391,23 +447,71 @@ function sim(dt){
 
 /* ================= DORPELINGEN ================= */
 const folk=[];const folkGroup=new THREE.Group();scene.add(folkGroup);
-const shirts=[0x8a3c2c,0x2c4a8a,0x3a7a3a,0x7a5a2a,0x6a3a7a,0x2a6a6a,0xa07a2a];
-function mkFolk(){const g=new THREE.Group();const c=shirts[Math.random()*shirts.length|0];
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,.4,7),M({color:c}));body.position.y=.3;body.castShadow=true;g.add(body);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.09,8,6),M({color:0xe5bf98}));head.position.y=.6;head.castShadow=true;g.add(head);
-  const hat=new THREE.Mesh(new THREE.CylinderGeometry(.06,.12,.06,8),M({color:0x5a4020}));hat.position.y=.68;g.add(hat);
-  for(const s of[-1,1]){const l=new THREE.Mesh(new THREE.BoxGeometry(.06,.14,.06),M({color:0x3a2a1a}));l.position.set(s*.05,.07,0);g.add(l);g.userData['l'+s]=l}
-  folkGroup.add(g);return{g,to:null,wait:Math.random()*3,ph:Math.random()*6}}
-function pickDest(f,isNight){const homes=S.bld.filter(b=>B[b.t].cap&&done(b)),all=S.bld.filter(done);let b;
-  if(isNight&&homes.length)b=homes[Math.random()*homes.length|0];else b=all[Math.random()*all.length|0];
-  if(!b)return;f.to=new THREE.Vector3(tx(b.i)+(Math.random()-.5)*1.4,0,tz(b.j)+(Math.random()-.5)*1.4+1)}
-function updFolk(dt,isNight){const want=Math.min(S.pop,60);while(folk.length<want){const f=mkFolk();const k=S.bld.find(b=>b.t==='kamp')||S.bld[0];f.g.position.set(tx(k.i),0,tz(k.j)+1);folk.push(f)}
-  while(folk.length>want){const f=folk.pop();folkGroup.remove(f.g)}
-  for(const f of folk){if(!f.to){f.wait-=dt;if(f.wait<=0)pickDest(f,isNight);f.g.visible=!(isNight&&f.home);continue}
-    f.g.visible=true;f.home=false;const p=f.g.position,d=f.to.clone().sub(p);d.y=0;const l=d.length();
-    if(l<.1){f.to=null;f.wait=2+Math.random()*5;f.home=isNight;continue}
-    d.multiplyScalar(1/l);p.addScaledVector(d,Math.min(l,1.6*dt));f.g.rotation.y=Math.atan2(d.x,d.z);f.ph+=dt*10;
-    f.g.userData['l-1'].rotation.x=Math.sin(f.ph)*.6;f.g.userData.l1.rotation.x=-Math.sin(f.ph)*.6;f.g.position.y=Math.abs(Math.sin(f.ph))*.03}}
+const SHIRTS=[0x8a3c2c,0x2c4a8a,0x3a7a3a,0x7a5a2a,0x6a3a7a,0x2a6a6a,0xa07a2a,0xc8b89a,0x5a5a5a];
+const HAIR=[0x2a1a10,0x5a3a1a,0x8a5a2a,0xd8b060,0x111111,0xa04a20,0xcccccc];
+const SKIN=[0xf0caa4,0xe5bf98,0xc89870,0x9a6a48,0x6a4530];
+const geoC={body:new THREE.CylinderGeometry(.055,.07,.17,8),dress:new THREE.ConeGeometry(.1,.24,10),leg:new THREE.BoxGeometry(.035,.12,.035),arm:new THREE.BoxGeometry(.03,.13,.03),head:new THREE.SphereGeometry(.055,10,8),hair:new THREE.SphereGeometry(.058,10,8,0,6.3,0,1.5),hat:new THREE.CylinderGeometry(.05,.09,.04,10),tool:new THREE.BoxGeometry(.015,.18,.015)};
+const matCache={};const MC=c=>matCache[c]||(matCache[c]=M({color:c}));
+function mkFolk(){const g=new THREE.Group();const fem=Math.random()<.5,kid=Math.random()<.2;const shirt=SHIRTS[Math.random()*SHIRTS.length|0];
+  const pivot=new THREE.Group();g.add(pivot);
+  if(fem){const d=new THREE.Mesh(geoC.dress,MC(shirt));d.position.y=.2;d.castShadow=true;pivot.add(d);const t=new THREE.Mesh(geoC.body,MC(shirt));t.scale.set(.85,.6,.85);t.position.y=.3;pivot.add(t)}
+  else{const b=new THREE.Mesh(geoC.body,MC(shirt));b.position.y=.24;b.castShadow=true;pivot.add(b)}
+  const legs=[],arms=[];
+  for(const sx of[-1,1]){const l=new THREE.Group();l.position.set(sx*.03,.14,0);const lm=new THREE.Mesh(geoC.leg,MC(fem?0x2a2a2a:0x3a3022));lm.position.y=-.06;l.add(lm);g.add(l);legs.push(l);
+    const a=new THREE.Group();a.position.set(sx*.075,.31,0);const am=new THREE.Mesh(geoC.arm,MC(shirt));am.position.y=-.06;a.add(am);pivot.add(a);arms.push(a)}
+  const skin=SKIN[Math.random()*SKIN.length|0];const h=new THREE.Mesh(geoC.head,MC(skin));h.position.y=.39;h.castShadow=true;pivot.add(h);
+  const hr=new THREE.Mesh(geoC.hair,MC(HAIR[Math.random()*HAIR.length|0]));hr.position.y=.4;hr.scale.set(1,fem?1.15:.9,1);pivot.add(hr);
+  if(!fem&&Math.random()<.4){const hat=new THREE.Mesh(geoC.hat,MC([0x5a4020,0x2a2a2a,0x8a6a3a][Math.random()*3|0]));hat.position.y=.45;pivot.add(hat)}
+  const tool=new THREE.Mesh(geoC.tool,mat.trunk);tool.position.y=-.14;tool.visible=false;arms[1].add(tool);
+  g.scale.setScalar(kid?.85:1.25);folkGroup.add(g);
+  return{g,pivot,legs,arms,tool,kid,ph:Math.random()*6,wait:Math.random()*2,to:null,state:'idle',spot:null,jobKey:null}}
+const rotL=(b,x,z)=>{const r=b.r||0,c=Math.cos(r),s=Math.sin(r);return new THREE.Vector3(tx(b.i)+x*c+z*s,0,tz(b.j)-x*s+z*c)};
+function nearestTile(b,v,r){let best=null,bd=1e9;for(let dj=-r;dj<=r;dj++)for(let di=-r;di<=r;di++){const i=b.i+di,j=b.j+dj;if(inMap(i,j)&&S.tiles[idx(i,j)]===v){const d=di*di+dj*dj+Math.random();if(d<bd){bd=d;best={i,j}}}}return best}
+function workSpot(b){const R=()=>Math.random()-.5;
+  if(b.t==='hakker'){const t=nearestTile(b,1,3);if(t){const p=new THREE.Vector3(tx(t.i),0,tz(t.j));const d=new THREE.Vector3(tx(b.i),0,tz(b.j)).sub(p).setLength(.75);return p.add(d)}}
+  if(b.t==='groeve'){const t=nearestTile(b,2,2);if(t){const p=new THREE.Vector3(tx(t.i),0,tz(t.j));const d=new THREE.Vector3(tx(b.i),0,tz(b.j)).sub(p).setLength(.85);return p.add(d)}return rotL(b,R()*1.2,R()*1.2)}
+  if(b.t==='boer')return rotL(b,R()*1.5+.15,R()*1.4+.15);
+  if(b.t==='visser')return rotL(b,.4+Math.random()*.5,.62);
+  if(b.t==='markt'){const s=[[-.5,-.2],[.5,-.2],[-.5,.7],[.5,.7]][Math.random()*4|0];return rotL(b,s[0],s[1])}
+  return rotL(b,R()*.6,1.05)}
+const doorOf=b=>rotL(b,0,b.t==='kamp'?.85:.95);
+function leisure(){const P=S.bld.filter(b=>done(b)&&['markt','put','park','kerk','kamp','toren','bakker'].includes(b.t));const b=P.length?P[Math.random()*P.length|0]:S.bld[0];const p=rotL(b,(Math.random()-.5)*1.6,(Math.random()-.5)*1.6+.9);return p}
+let assignT=0;
+function assignFolk(){const homes=[];for(const b of S.bld)if(done(b)&&B[b.t].cap)for(let k=0;k<B[b.t].cap;k++)homes.push(b);
+  const jobs=[];for(const b of S.bld)if(done(b))for(let k=0;k<(b.w||0);k++)jobs.push(b);
+  const adults=folk.filter(f=>!f.kid),kids=folk.filter(f=>f.kid);
+  folk.forEach((f,i)=>f.home=homes[i%Math.max(1,homes.length)]);
+  adults.forEach((f,i)=>{const j=jobs[i]||null;if(f.job!==j){f.job=j;f.spot=null;f.to=null}});kids.forEach(f=>f.job=null)}
+function updFolk(dt,isNight){const want=Math.min(S.pop,90);
+  while(folk.length<want){const f=mkFolk();const k=S.bld.find(b=>b.t==='kamp')||S.bld[0];const p=doorOf(k);f.g.position.set(p.x+(Math.random()-.5),0,p.z+Math.random()*.6);folk.push(f);assignT=0}
+  while(folk.length>want){const f=folk.pop();folkGroup.remove(f.g);assignT=0}
+  assignT-=dt;if(assignT<=0){assignT=1;assignFolk()}
+  const h=(S.time/60)%24;const sleep=h>=21.5||h<6,work=h>=7&&h<17.5;const t=clock.elapsedTime;
+  for(const f of folk){const g=f.g,p=g.position;
+    // doel bepalen
+    let goal='play';if(sleep)goal='home';else if(work&&f.job)goal='work';
+    if(goal!==f.state){f.state=goal;f.to=null;f.wait=Math.random()*1.5;g.visible=true}
+    if(!f.to){f.wait-=dt;if(f.wait>0&&goal!=='work'){idleAnim(f,dt,t);continue}
+      if(goal==='home'&&f.home)f.to=doorOf(f.home);
+      else if(goal==='work'){f.spot=f.spot||workSpot(f.job);f.to=f.spot.clone()}
+      else f.to=leisure()}
+    const d=f.to.clone().sub(p);d.y=0;const l=d.length();
+    if(l>.05){g.visible=true;d.multiplyScalar(1/l);const sp=(f.kid?1.1:.8)*(goal==='home'?1.3:1);p.addScaledVector(d,Math.min(l,sp*dt));g.rotation.y=Math.atan2(d.x,d.z);
+      f.ph+=dt*sp*14;const sw=Math.sin(f.ph)*.7;f.legs[0].rotation.x=sw;f.legs[1].rotation.x=-sw;f.arms[0].rotation.x=-sw*.7;f.arms[1].rotation.x=sw*.7;f.pivot.rotation.x=0;f.pivot.position.y=Math.abs(Math.cos(f.ph))*.012;f.tool.visible=false;continue}
+    // aangekomen
+    if(goal==='home'){g.visible=false;continue}
+    if(goal==='work'){workAnim(f,dt,t);continue}
+    f.to=null;f.wait=3+Math.random()*6}
+}
+function idleAnim(f,dt,t){f.legs[0].rotation.x=f.legs[1].rotation.x=0;f.pivot.rotation.x=0;f.tool.visible=false;
+  if(f.kid){f.pivot.position.y=Math.abs(Math.sin(t*6+f.ph))*.06;f.arms[0].rotation.x=f.arms[1].rotation.x=-2.6}
+  else{f.pivot.position.y=0;f.arms[0].rotation.x=Math.sin(t*1.5+f.ph)*.15;f.arms[1].rotation.x=-.4+Math.sin(t*2.3+f.ph)*.5;f.g.rotation.y+=Math.sin(t*.5+f.ph)*dt*.5}}
+function workAnim(f,dt,t){const b=f.job;f.legs[0].rotation.x=f.legs[1].rotation.x=0;f.pivot.position.y=0;
+  if(b.t==='hakker'||b.t==='groeve'){const tg=nearestTile(b,b.t==='hakker'?1:2,3);if(tg){const d=new THREE.Vector3(tx(tg.i),0,tz(tg.j)).sub(f.g.position);f.g.rotation.y=Math.atan2(d.x,d.z)}
+    f.tool.visible=true;const s=Math.sin(t*7+f.ph);f.arms[1].rotation.x=-1.4-s*1.2;f.arms[0].rotation.x=-1.2-s*1;f.pivot.rotation.x=.15+Math.max(0,s)*.2}
+  else if(b.t==='boer'){f.tool.visible=true;f.pivot.rotation.x=.5+Math.sin(t*2.5+f.ph)*.15;f.arms[0].rotation.x=f.arms[1].rotation.x=-1+Math.sin(t*5+f.ph)*.5}
+  else if(b.t==='visser'){f.g.rotation.y=(b.r||0);f.tool.visible=true;f.tool.scale.y=3;f.arms[1].rotation.x=-1.2+Math.sin(t*.8+f.ph)*.08;f.arms[0].rotation.x=-.6}
+  else{f.arms[0].rotation.x=Math.sin(t*3+f.ph)*.6-.3;f.arms[1].rotation.x=-Math.sin(t*3+f.ph)*.6-.3;f.pivot.rotation.x=0;const d=new THREE.Vector3(tx(b.i),0,tz(b.j)).sub(f.g.position);if(b.t==='markt')f.g.rotation.y=Math.atan2(-d.x,-d.z)}}
 
 /* ================= KONING & BEDIENDEN ================= */
 const servants=[];
@@ -418,7 +522,7 @@ function mkServant(){const g=new THREE.Group();
   const wig=new THREE.Mesh(new THREE.SphereGeometry(.095,8,6,0,6.3,0,1.4),M({color:0xf2efe8}));wig.position.y=.65;g.add(wig);
   const ham=new THREE.Group();const hs=new THREE.Mesh(new THREE.BoxGeometry(.03,.25,.03),mat.trunk);hs.position.y=-.1;ham.add(hs);const hh=new THREE.Mesh(new THREE.BoxGeometry(.1,.05,.05),mat.dark);hh.position.y=-.22;ham.add(hh);ham.position.set(.14,.45,0);g.add(ham);
   for(const s of[-1,1]){const l=new THREE.Mesh(new THREE.BoxGeometry(.06,.14,.06),M({color:0x111111}));l.position.set(s*.05,.07,0);g.add(l);g.userData['l'+s]=l}
-  g.userData.ham=ham;scene.add(g);const k=S.bld.find(b=>b.t==='kamp')||S.bld[0];g.position.set(tx(k.i)+Math.random()-.5,0,tz(k.j)+1.3);
+  g.userData.ham=ham;g.scale.setScalar(.75);scene.add(g);const k=S.bld.find(b=>b.t==='kamp')||S.bld[0];g.position.set(tx(k.i)+Math.random()-.5,0,tz(k.j)+1.3);
   return{g,job:null,at:false,ph:Math.random()*6,idle:0}}
 function updServants(dt,t){
   while(servants.length<S.servants)servants.push(mkServant());
@@ -432,15 +536,15 @@ function updServants(dt,t){
     if(v.job)dest=new THREE.Vector3(tx(v.job.i),0,tz(v.job.j)).add(v.off);
     else{const k=S.bld.find(b=>b.t==='kasteel'&&done(b))||S.bld.find(b=>b.t==='kamp');v.idle-=dt;if(!v.home||v.idle<0){v.idle=4+Math.random()*4;v.home=new THREE.Vector3(tx(k.i)+(Math.random()-.5)*3,0,tz(k.j)+1.4+Math.random()*1.2)}dest=v.home}
     const d=dest.clone().sub(p);d.y=0;const l=d.length();
-    if(l>.08){d.multiplyScalar(1/l);p.addScaledVector(d,Math.min(l,(v.job?2.6:1.2)*dt));g.rotation.y=Math.atan2(d.x,d.z);v.ph+=dt*12;g.userData['l-1'].rotation.x=Math.sin(v.ph)*.6;g.userData.l1.rotation.x=-Math.sin(v.ph)*.6;g.userData.ham.rotation.x=0;v.at=false}
+    if(l>.08){d.multiplyScalar(1/l);p.addScaledVector(d,Math.min(l,(v.job?2:1)*dt));g.rotation.y=Math.atan2(d.x,d.z);v.ph+=dt*12;g.userData['l-1'].rotation.x=Math.sin(v.ph)*.6;g.userData.l1.rotation.x=-Math.sin(v.ph)*.6;g.userData.ham.rotation.x=0;v.at=false}
     else if(v.job){v.at=true;const c=new THREE.Vector3(tx(v.job.i),0,tz(v.job.j)).sub(p);g.rotation.y=Math.atan2(c.x,c.z);g.userData.ham.rotation.x=-Math.abs(Math.sin(t*9+v.ph))*1.6;
       v.job.prog=Math.min(1,v.job.prog+dt/buildTime(v.job.t));
       if(Math.sin(t*9+v.ph)>.97&&Math.random()<.3)sfx(1400+Math.random()*300,.025)}
   }
   for(const b of sites){const g=bldObj.get(b);if(!g)continue;const s=g.userData.scaf,inn=g.userData.inner;
-    inn.scale.set(1,Math.max(.02,b.prog),1);s.userData.fill.scale.x=Math.max(.001,b.prog);s.userData.fill.position.x=-.78*(1-b.prog);
+    const k=g.userData.sc;inn.scale.set(k,k*Math.max(.02,b.prog),k);s.userData.fill.scale.x=Math.max(.001,b.prog);s.userData.fill.position.x=-.78*(1-b.prog);
     s.userData.bar.quaternion.copy(camera.quaternion);s.userData.fill.quaternion.copy(camera.quaternion);
-    if(b.prog>=1){g.remove(s);g.userData.scaf=null;inn.scale.set(1,1,1);g.scale.setScalar(1.08);sfx(880,.15);
+    if(b.prog>=1){g.remove(s);g.userData.scaf=null;inn.scale.setScalar(g.userData.sc);g.scale.setScalar(1.08);sfx(880,.15);
       msg(b.t==='kasteel'?'🏰 HET KASTEEL STAAT! De koning verhuist naar zijn kasteel!':'✅ '+B[b.t].n+' is klaar!');save()}}
 }
 // de koning
@@ -451,13 +555,13 @@ const king=new THREE.Group();{
   const crown=new THREE.Mesh(new THREE.CylinderGeometry(.09,.08,.09,8,1,true),mat.gold);crown.position.y=.8;king.add(crown);
   for(let a=0;a<6;a++){const sp=new THREE.Mesh(new THREE.ConeGeometry(.02,.06,4),mat.gold);sp.position.set(Math.cos(a)*.085,.87,Math.sin(a)*.085);king.add(sp)}
   const sc=new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,.5,6),mat.gold);sc.position.set(.18,.4,.05);king.add(sc);const orb=new THREE.Mesh(new THREE.SphereGeometry(.04,8,6),mat.red);orb.position.set(.18,.67,.05);king.add(orb);
-  king.scale.setScalar(1.25);scene.add(king)}
+  king.scale.setScalar(.9);scene.add(king)}
 const kingS={to:null,wait:2,ph:0};
 function updKing(dt,isNight){const p=king.position;const home=S.bld.find(b=>b.t==='kasteel'&&done(b))||S.bld.find(b=>b.t==='kamp');
   if(!kingS.init){p.set(tx(home.i),0,tz(home.j)+1.2);kingS.init=1}
   if(!kingS.to){kingS.wait-=dt;if(kingS.wait<=0){const sites=S.bld.filter(b=>!done(b));const pool=isNight?[home]:sites.length&&Math.random()<.6?sites:S.bld;const b=pool[Math.random()*pool.length|0];kingS.to=new THREE.Vector3(tx(b.i)+(Math.random()-.5)*1.5,0,tz(b.j)+1.5)}return}
   const d=kingS.to.clone().sub(p);d.y=0;const l=d.length();if(l<.1){kingS.to=null;kingS.wait=3+Math.random()*4;return}
-  d.multiplyScalar(1/l);p.addScaledVector(d,Math.min(l,1.1*dt));king.rotation.y=Math.atan2(d.x,d.z);kingS.ph+=dt*8;p.y=Math.abs(Math.sin(kingS.ph))*.03}
+  d.multiplyScalar(1/l);p.addScaledVector(d,Math.min(l,.8*dt));king.rotation.y=Math.atan2(d.x,d.z);kingS.ph+=dt*8;p.y=Math.abs(Math.sin(kingS.ph))*.03}
 
 /* ================= DAG / NACHT ================= */
 const dayC={top:new THREE.Color(0x4d8fd6),bot:new THREE.Color(0xd6e6f2)},nightC={top:new THREE.Color(0x060b1e),bot:new THREE.Color(0x1d2647)},duskC={top:new THREE.Color(0x3a4a8a),bot:new THREE.Color(0xf0a070)};
@@ -469,7 +573,7 @@ function dayNight(){const h=(S.time/60)%24;const a=(h-6)/12*Math.PI; // 6u op, 1
   const sd=new THREE.Vector3(Math.cos(a)*.8,Math.max(.15,Math.abs(Math.sin(a))),.45).normalize();
   sun.position.set(cam.x,0,cam.z).addScaledVector(sd,90);sun.target.position.set(cam.x,0,cam.z);
   sun.intensity=.15+dayF*2.3;sun.color.set(up>0?0xfff0d0:0x8fa8ff).lerp(new THREE.Color(0xff9a50),dusk*.6);
-  hemi.intensity=.18+dayF*.75;renderer.toneMappingExposure=.85+dayF*.15;
+  hemi.intensity=.18+dayF*.75;waterMat.uniforms.lite.value=.3+dayF*.7;renderer.toneMappingExposure=.85+dayF*.15;
   const night=dayF<.35;mat.window.emissiveIntensity=night?1.6:0;
   // lampen bij de dichtstbijzijnde huizen
   const hs=S.bld.filter(b=>B[b.t].cap||b.t==='kerk'||b.t==='markt').sort((p,q)=>Math.hypot(tx(p.i)-cam.x,tz(p.j)-cam.z)-Math.hypot(tx(q.i)-cam.x,tz(q.j)-cam.z));
@@ -500,8 +604,8 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify({...S,cam}))}catch(e
 function startWorld(s){
   S=s;if(S.servants==null)S.servants=2;servants.forEach(v=>scene.remove(v.g));servants.length=0;kingS.init=0;kingS.to=null;world.clear();bldObj.clear();tileObj.length=0;folk.forEach(f=>folkGroup.remove(f.g));folk.length=0;
   if(!S.tiles.length){S.tiles=genMap(S.seed);S.bld=[{t:'kamp',i:N/2,j:N/2,r:0}]}
-  for(let j=0;j<N;j++)for(let i=0;i<N;i++)buildTileMesh(i,j);buildWater();
-  for(const b of S.bld)addBldMesh(b);
+  makeTufts();for(let j=0;j<N;j++)for(let i=0;i<N;i++)buildTileMesh(i,j);buildWater();
+  for(const b of S.bld)addBldMesh(b);for(let j=0;j<N;j++)for(let i=0;i<N;i++)refreshTufts(i,j);
   if(s.cam)Object.assign(cam,s.cam);delete S.cam;
 }
 let loaded=null;try{loaded=JSON.parse(localStorage.getItem(KEY))}catch(e){}
@@ -531,12 +635,12 @@ function loop(){const dt=Math.min(clock.getDelta(),.1);const t=clock.elapsedTime
   // animaties
   for(const[b,g]of bldObj){if(g.scale.x!==1)g.scale.setScalar(Math.abs(g.scale.x-1)<.003?1:g.scale.x+(1-g.scale.x)*Math.min(1,dt*6));if(g.userData.fire)g.userData.fire.scale.set(1,1+Math.sin(t*12)*.15,1);if(g.userData.flag)g.userData.flag.rotation.y=Math.sin(t*3)*.3}
   for(let i=floats.length-1;i>=0;i--){const f=floats[i];f.t-=dt;f.sp.position.y+=dt*1.5;f.sp.material.opacity=Math.min(1,f.t);if(f.t<=0){scene.remove(f.sp);floats.splice(i,1)}}
-  mat.water.color.setHSL(.56,.55,.38+Math.sin(t)*.02);
+  waterMat.uniforms.t.value=t;
   sky.position.copy(camera.position);
   hud();
-  renderer.render(scene,camera);requestAnimationFrame(loop)}
+  composer.render();requestAnimationFrame(loop)}
 loop();
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});
 window.__bd={servants,king,updServants,sim,get S(){return S},B,setTool,click,cam,bAt};
 </script>
 </body>
