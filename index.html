@@ -68,6 +68,7 @@ canvas{display:block}
     <span>Slepen</span><span>de kaart verschuiven (of WASD / pijltjes)</span>
     <span>Scrollen</span><span>in- en uitzoomen</span>
     <span>Q / E</span><span>draaien</span>
+    <span>Klik op dier</span><span>de koning schiet een pijl 🏹</span>
     <span>Klik op gebouw</span><span>info (als je niets gekozen hebt)</span>
     <span>Esc</span><span>niets kiezen</span>
   </div>
@@ -95,6 +96,7 @@ const B={
  hakker: {n:'Houthakker',e:'🪓',cost:{hout:8},jobs:2,prod:{hout:.6},d:'Maakt hout. Meer hout met bomen in de buurt.'},
  groeve: {n:'Steengroeve',e:'⛏️',cost:{hout:15},jobs:3,prod:{steen:.25},d:'Maakt steen. Zet hem naast rotsen!'},
  visser: {n:'Visser',e:'🎣',cost:{hout:12},jobs:1,prod:{eten:1.1},d:'Moet naast het water staan.'},
+ jager:  {n:'Jagershut',e:'🏹',cost:{hout:15},jobs:2,d:'Jagers schieten op wilde dieren in de buurt. Zet hem bij het bos!'},
  put:    {n:'Waterput',e:'🪣',cost:{steen:8},joy:6,d:'+6 geluk.'},
  park:   {n:'Park',e:'🌳',cost:{hout:6},joy:3,d:'+3 geluk.'},
  weg:    {n:'Weg',e:'🟫',cost:{steen:1},d:'Mooie kasseiweg.'},
@@ -106,13 +108,14 @@ const B={
  toren:  {n:'Uitkijktoren',e:'🗼',cost:{hout:20,steen:40,goud:30},joy:8,d:'+8 geluk. Mooi uitzicht.'},
  kasteel:{n:'Kasteel',e:'🏰',cost:{steen:250,goud:200},joy:30,cap:12,d:'Het doel van het spel! Maakt van je dorp een stad.'},
 };
-const MENU=['bediende','|','huis','boer','hakker','groeve','visser','|','put','park','weg','bakker','steenhuis','markt','smid','kerk','toren','kasteel','|','kap','sloop'];
+const MENU=['bediende','|','huis','boer','hakker','groeve','visser','jager','|','put','park','weg','bakker','steenhuis','markt','smid','kerk','toren','kasteel','|','kap','sloop'];
 const TOOLS={bediende:{n:'Bediende',e:'🤵',d:'Huur een bediende in. Bedienden bouwen alles wat de koning beveelt. Meer bedienden = sneller bouwen.'},kap:{n:'Boom kappen',e:'🪵',d:'Kap een boom: +3 hout.'},sloop:{n:'Slopen',e:'🧨',d:'Sloop een gebouw. Je krijgt de helft terug.'}};
 const LEVELS=[[0,'Kampement'],[5,'Gehucht'],[15,'Dorp'],[35,'Groot dorp'],[70,'Stadje'],[130,'Stad']];
 const GOALS=[
  {t:'Bouw 2 huisjes',ok:()=>count('huis')>=2,rw:{hout:15}},
  {t:'Bouw een boerderij',ok:()=>count('boer')>=1,rw:{hout:10}},
  {t:'Bouw een houthakker bij het bos',ok:()=>count('hakker')>=1,rw:{eten:20}},
+ {t:'Jaag op een wild dier (klik erop!)',ok:()=>(S.kills||0)>=1,rw:{hout:10}},
  {t:'Bereik 10 dorpelingen',ok:()=>S.pop>=10,rw:{hout:30}},
  {t:'Bouw een steengroeve naast de rotsen',ok:()=>count('groeve')>=1,rw:{hout:20}},
  {t:'Bouw een waterput',ok:()=>count('put')>=1,rw:{steen:15}},
@@ -134,7 +137,7 @@ function fresh(){
 const done=b=>b.prog==null||b.prog>=1;
 const count=t=>S.bld.filter(b=>b.t===t&&done(b)).length;
 const hireCost=()=>({eten:15+S.servants*10,goud:S.servants>=4?(S.servants-3)*8:0});
-const buildTime=t=>t==='weg'?1.5:Math.max(3,Object.values(B[t].cost).reduce((a,b)=>a+b,0)/3);
+const buildTime=t=>t==='weg'?1.5:t==='kasteel'?90:Math.max(3,Object.values(B[t].cost).reduce((a,b)=>a+b,0)/3);
 
 /* ================= THREE ================= */
 const renderer=new THREE.WebGLRenderer({antialias:true});
@@ -264,6 +267,9 @@ const MODELS={
  groeve(g){for(let i=0;i<7;i++){const o=new THREE.Mesh(new THREE.DodecahedronGeometry(.18+Math.random()*.2,0),mat.rock);o.position.set(Math.random()*1.2-.6,.15,Math.random()*1.2-.6);o.castShadow=true;g.add(o)}
   box(g,.08,1.2,.08,mat.trunk,-.6,0,.6);box(g,.7,.06,.06,mat.trunk,-.3,1.15,.6);box(g,.02,.5,.02,mat.dark,0,.65,.6);box(g,.6,.25,.4,mat.wood,.3,0,.6)},
  visser(g){box(g,1.8,.08,.5,mat.wood,0,0,.6);box(g,.7,.5,.6,mat.wood,-.4,0,-.3);gable(g,.8,.7,.3,mat.slate,-.4,.5,-.3,Math.PI/2);box(g,.05,.6,.05,mat.trunk,.7,0,.75);const b=new THREE.Mesh(new THREE.CylinderGeometry(.16,.1,.7,8,1,false,0,Math.PI),mat.wood);b.rotation.z=Math.PI/2;b.position.set(.5,.12,-.3);g.add(b)},
+ jager(g){box(g,.9,.55,.7,mat.wood,-.2,0,-.3);gable(g,1.05,.8,.4,mat.thatch,-.2,.55,-.3,Math.PI/2);door(g,-.2,.051);
+  box(g,.06,.5,.06,mat.trunk,.55,0,.3);box(g,.06,.5,.06,mat.trunk,.85,0,.3);box(g,.4,.04,.04,mat.trunk,.7,.45,.3);const hide=new THREE.Mesh(new THREE.PlaneGeometry(.32,.3),M({color:0x8a6040,side:THREE.DoubleSide}));hide.position.set(.7,.28,.3);g.add(hide);
+  const t=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.06,10),M({color:0xd8c8a0}));t.rotation.x=Math.PI/2;t.position.set(.5,.35,-.6);g.add(t);const t2=new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.065,10),mat.red);t2.rotation.x=Math.PI/2;t2.position.set(.5,.35,-.6);g.add(t2)},
  put(g){cyl(g,.38,.4,.4,mat.stone,0,0,0,14);const w=new THREE.Mesh(new THREE.CircleGeometry(.3,14),mat.water);w.rotation.x=-Math.PI/2;w.position.y=.35;g.add(w);box(g,.06,.7,.06,mat.trunk,-.32,.3,0);box(g,.06,.7,.06,mat.trunk,.32,.3,0);gable(g,.8,.5,.25,mat.roof,0,1,0,Math.PI/2)},
  park(g){box(g,1.9,.03,1.9,M({color:0x6aae4a}));tree(g,-.45,-.4,.9);tree(g,.5,.45,.75);box(g,.6,.05,.18,mat.wood,.2,.22,-.4);box(g,.05,.22,.15,mat.dark,-.05,0,-.4);box(g,.05,.22,.15,mat.dark,.45,0,-.4);for(let i=0;i<6;i++){const f=new THREE.Mesh(new THREE.SphereGeometry(.05,6,4),M({color:[0xff5a7a,0xffd23f,0xb070ff][i%3]}));f.position.set(-.7+i*.12,.06,.7);g.add(f)}},
  weg(g){box(g,2,.04,2,mat.cobble)},
@@ -275,10 +281,40 @@ const MODELS={
  kerk(g){box(g,1,1.1,1.6,mat.stone,0,0,.15);gable(g,1.15,1.7,.7,mat.slate,0,1.1,.15);box(g,.6,1.9,.6,mat.stone,0,0,-.8);cone(g,.45,1,mat.slate,0,1.9,-.8);box(g,.04,.3,.04,mat.gold,0,2.9,-.8);box(g,.18,.04,.04,mat.gold,0,3.08,-.8);
   for(const z of[-.1,.35,.75]){win(g,.501,.65,z,Math.PI/2,.18,.45);win(g,-.501,.65,z,-Math.PI/2,.18,.45)}const r=new THREE.Mesh(new THREE.CircleGeometry(.14,16),mat.window);r.position.set(0,1.35,-.499+.0);r.position.z=-.8+.301;g.add(r);door(g,0,-.499)},
  toren(g){box(g,.8,2.6,.8,mat.stone);box(g,1,.2,1,mat.wood,0,2.6,0);for(const[x,z]of[[-.45,-.45],[.45,-.45],[-.45,.45],[.45,.45]])box(g,.08,.6,.08,mat.trunk,x,2.8,z);cone(g,.8,.7,mat.roof,0,3.4,0);win(g,0,1.4,.401,0,.18,.3);win(g,0,2,.401,0,.18,.3);door(g,0,.401)},
- kasteel(g){const s=1.0;box(g,1.5,1.2,1.5,mat.stone);for(const[x,z]of[[-.8,-.8],[.8,-.8],[-.8,.8],[.8,.8]]){cyl(g,.3,.32,1.9,mat.stone,x,0,z,10);cone(g,.38,.7,mat.slate,x,1.9,z,10,0)}
-  box(g,.8,2.3,.8,mat.stone);cone(g,.6,.9,mat.slate,0,2.3,0,4);box(g,.03,.5,.03,mat.dark,0,3.2,0);const f=new THREE.Mesh(new THREE.PlaneGeometry(.4,.25),mat.flag);f.position.set(.2,3.55,0);g.add(f);g.userData.flag=f;
-  for(let i=-3;i<=3;i++){box(g,.14,.18,.14,mat.stone,i*.22,1.2,.68);box(g,.14,.18,.14,mat.stone,i*.22,1.2,-.68)}
-  const d=new THREE.Mesh(new THREE.PlaneGeometry(.45,.6),mat.dark);d.position.set(0,.3,.751);g.add(d);win(g,0,1.7,.401,0,.2,.3)},
+ kasteel(g){const E=2.55; // halve breedte (3x3 tegels)
+  box(g,5.7,.05,5.7,mat.cobble);
+  // muren met kantelen
+  for(const[w,d,x,z]of[[2*E,.4,0,-E],[.4,2*E,-E,0],[.4,2*E,E,0],[E-.75,.4,-(E+.75)/2,E],[E-.75,.4,(E+.75)/2,E]]){box(g,w,1.7,d,mat.stone,x,0,z);
+    const n=Math.round(Math.max(w,d)/.32);for(let k=0;k<n;k+=2){const o=-Math.max(w,d)/2+.16+k*.32;box(g,w>d?.26:.44,.24,w>d?.44:.26,mat.stone,w>d?x+o:x,1.7,w>d?z:z+o)}}
+  // walgang binnen
+  for(const[w,d,x,z]of[[2*E-.4,.3,0,-E+.35],[.3,2*E-.4,-E+.35,0],[.3,2*E-.4,E-.35,0]])box(g,w,.08,d,mat.wood,x,1.45,z);
+  // hoektorens
+  const flags=[];
+  for(const[x,z]of[[-E,-E],[E,-E],[-E,E],[E,E]]){cyl(g,.62,.68,2.7,mat.stone,x,0,z,14);for(let a=0;a<10;a++){const an=a/10*Math.PI*2;box(g,.18,.22,.18,mat.stone,x+Math.cos(an)*.58,2.7,z+Math.sin(an)*.58)}
+    cone(g,.7,1.4,mat.slate,x,2.8,z,14,0);box(g,.025,.5,.025,mat.dark,x,4.15,z);const f=new THREE.Mesh(new THREE.PlaneGeometry(.45,.28),mat.red);f.position.set(x+.23,4.5,z);g.add(f);flags.push(f);
+    for(const y of[.9,1.8]){const an=Math.atan2(z,x);win(g,x+Math.cos(an)*.69,y,z+Math.sin(an)*.69,Math.PI/2-an,.12,.26)}}
+  // poortgebouw
+  for(const x of[-.75,.75]){cyl(g,.42,.45,2.4,mat.stone,x,0,E,12);cone(g,.48,.9,mat.slate,x,2.4,E,12,0)}
+  box(g,1.2,.7,.5,mat.stone,0,1.4,E);for(let k=-2;k<=2;k++)box(g,.16,.2,.5,mat.stone,k*.25,2.1,E);
+  const gate=new THREE.Mesh(new THREE.PlaneGeometry(.9,1.35),mat.dark);gate.position.set(0,.68,E+.26);g.add(gate);
+  const arch=new THREE.Mesh(new THREE.CircleGeometry(.45,16,0,Math.PI),mat.dark);arch.position.set(0,1.35,E+.26);g.add(arch);
+  for(let k=-3;k<=3;k++)box(g,.03,1.3,.03,mat.dark,k*.13,.4,E+.28);
+  const bridge=box(g,1,.08,1.2,mat.wood,0,0,E+.85);
+  // banieren op de muur
+  for(const x of[-1.7,1.7]){const bn=new THREE.Mesh(new THREE.PlaneGeometry(.4,.8),mat.red);bn.position.set(x,1.05,E+.21);g.add(bn);const cr=new THREE.Mesh(new THREE.PlaneGeometry(.16,.16),mat.gold);cr.position.set(x,1.15,E+.215);g.add(cr)}
+  // donjon (hoofdtoren)
+  box(g,2.4,3.6,2,mat.stone,0,0,-.85);
+  for(let k=-4;k<=4;k+=2){box(g,.22,.25,.22,mat.stone,k*.27,3.6,.12);box(g,.22,.25,.22,mat.stone,k*.27,3.6,-1.82)}
+  for(const[x,z]of[[-1.2,.15],[1.2,.15],[-1.2,-1.85],[1.2,-1.85]]){cyl(g,.3,.3,4.3,mat.stone,x,0,z,10);cone(g,.36,.9,mat.slate,x,4.3,z,10,0)}
+  cyl(g,.6,.65,1.7,mat.stone,0,3.6,-.85,14);cone(g,.75,1.8,mat.slate,0,5.3,-.85,14,0);box(g,.03,.7,.03,mat.gold,0,7.1,-.85);
+  const big=new THREE.Mesh(new THREE.PlaneGeometry(.9,.55),mat.flag);big.position.set(.45,7.55,-.85);g.add(big);g.userData.flag=big;g.userData.flags=flags;
+  for(const x of[-.7,0,.7])for(const y of[1.2,2.2,3.0])win(g,x,y,.151,0,.2,.34);
+  const door=new THREE.Mesh(new THREE.PlaneGeometry(.55,.8),mat.dark);door.position.set(0,.4,.152);g.add(door);
+  const ros=new THREE.Mesh(new THREE.CircleGeometry(.22,18),mat.window);ros.position.set(0,4.4,-.24);g.add(ros);
+  // binnenplaats
+  tree(g,-1.7,1.5,.9);tree(g,1.8,1.3,.8);cyl(g,.25,.27,.3,mat.stone,1.4,0,-2,12);
+  for(let k=0;k<4;k++){const x=-.6+k*.4;box(g,.3,.02,1.6,mat.red,0,0.03,1.4,0)}
+ },
 };
 
 /* ---------- world objects ---------- */
@@ -335,8 +371,8 @@ function addScaffold(g){const s=new THREE.Group();s.name='scaf';for(const[x,z]of
   const bar=new THREE.Mesh(new THREE.PlaneGeometry(1.6,.14),new THREE.MeshBasicMaterial({color:0x222222,depthTest:false}));bar.position.y=2.3;bar.renderOrder=5;s.add(bar);
   const fill=new THREE.Mesh(new THREE.PlaneGeometry(1.56,.1),new THREE.MeshBasicMaterial({color:0xffcf5a,depthTest:false}));fill.position.set(0,2.3,.001);fill.renderOrder=6;s.add(fill);s.userData.fill=fill;s.userData.bar=bar;
   g.add(s);g.userData.scaf=s}
-const SC={huis:1.35,steenhuis:1.3,bakker:1.3,smid:1.3,kerk:1.2,toren:1.15,kasteel:1.15,hakker:1.3,kamp:1.2,put:1.1,visser:1.1};
-function addBldMesh(b){const g=new THREE.Group();const inner=new THREE.Group();MODELS[b.t](inner);inner.scale.setScalar(SC[b.t]||1);g.userData.sc=SC[b.t]||1;g.add(inner);g.userData.inner=inner;refreshTufts(b.i,b.j);if(!done(b))addScaffold(g);g.position.set(tx(b.i),0,tz(b.j));g.rotation.y=b.r||0;
+const FP={kasteel:1};const SC={huis:1.35,steenhuis:1.3,bakker:1.3,smid:1.3,kerk:1.2,toren:1.15,kasteel:1,hakker:1.3,kamp:1.2,put:1.1,visser:1.1};
+function addBldMesh(b){const g=new THREE.Group();const inner=new THREE.Group();MODELS[b.t](inner);inner.scale.setScalar(SC[b.t]||1);g.userData.sc=SC[b.t]||1;g.add(inner);g.userData.inner=inner;foot(b.t,b.i,b.j,refreshTufts);if(!done(b)){addScaffold(g);if(FP[b.t]){g.userData.scaf.scale.set(3,2.2,3)}}g.position.set(tx(b.i),0,tz(b.j));g.rotation.y=b.r||0;
   g.traverse(o=>{if(o.isMesh&&o.material===mat.window){o.material=mat.window}});
   world.add(g);bldObj.set(b,g);return g}
 
@@ -353,9 +389,10 @@ const hl=new THREE.Mesh(new THREE.PlaneGeometry(TS*.96,TS*.96),hlMat);hl.rotatio
 function tileAt(cx,cy){mouse.set(cx/innerWidth*2-1,-cy/innerHeight*2+1);ray.setFromCamera(mouse,camera);const p=new THREE.Vector3();
   if(!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),p))return null;
   const i=Math.floor(p.x/TS+N/2),j=Math.floor(p.z/TS+N/2);return inMap(i,j)?{i,j}:null}
-const bAt=(i,j)=>S.bld.find(b=>b.i===i&&b.j===j);
-function canPlace(t,i,j){if(!inMap(i,j))return'Buiten de kaart';if(bAt(i,j))return'Hier staat al iets';const v=S.tiles[idx(i,j)];
-  if(v===1)return'Kap eerst de bomen (🪵)';if(v===2)return'Hier liggen rotsen';if(v===3)return'Dit is water';
+const bAt=(i,j)=>S.bld.find(b=>{const r=FP[b.t]||0;return Math.abs(b.i-i)<=r&&Math.abs(b.j-j)<=r});
+const foot=(t,i,j,fn)=>{const r=FP[t]||0;for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)fn(i+a,j+b)};
+function canPlace(t,i,j){let why=null;foot(t,i,j,(a,b)=>{if(why)return;if(!inMap(a,b)){why='Buiten de kaart';return}if(bAt(a,b)){why='Hier staat al iets';return}const v=S.tiles[idx(a,b)];
+  if(v===1)why='Kap eerst de bomen (🪵)';else if(v===2)why='Hier liggen rotsen';else if(v===3)why='Dit is water'});if(why)return FP[t]?why+' (het kasteel is 3×3 vakjes)':why;
   if(t==='visser'&&!near(i,j,1,3))return'Moet naast het water staan';
   for(const[k,a]of Object.entries(B[t].cost))if(S[k]<a)return'Niet genoeg '+k;return null}
 function near(i,j,r,v){for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++)if((a||b)&&inMap(i+a,j+b)&&S.tiles[idx(i+a,j+b)]===v)return true;return false}
@@ -373,7 +410,11 @@ addEventListener('pointermove',e=>{
       if(down.btn===2){cam.yaw-=(e.clientX-(down.lx??down.x))*.006;down.lx=e.clientX}
       else{const fx=Math.sin(cam.yaw),fz=Math.cos(cam.yaw);cam.x=down.cx-(dx*fz-dy*fx/Math.sin(cam.pitch)*0+(-dy)*fx*1.3)*k*0;cam.x=down.cx-(dx*Math.cos(cam.yaw)+dy*Math.sin(cam.yaw)*1.3)*k;cam.z=down.cz-(-dx*Math.sin(cam.yaw)+dy*Math.cos(cam.yaw)*1.3)*k}}}
   hover=tileAt(e.clientX,e.clientY);showTip(e)});
-addEventListener('pointerup',e=>{if(down&&!dragged&&down.btn===0&&e.target===cvs)click(tileAt(e.clientX,e.clientY));down=null});
+function animalAt(cx,cy){mouse.set(cx/innerWidth*2-1,-cy/innerHeight*2+1);ray.setFromCamera(mouse,camera);
+  // ruime klikzone: dichtstbijzijnde dier bij de straal
+  let best=null,bd=1e9;for(const a of animals){if(a.dead)continue;const c=a.g.position.clone();c.y+=.25;const d=ray.ray.distanceSqToPoint(c);const lim=a.type==='konijn'?.35:.6;if(d<lim*lim&&d<bd){bd=d;best=a}}return best}
+addEventListener('pointerup',e=>{if(down&&!dragged&&down.btn===0&&e.target===cvs){const a=animalAt(e.clientX,e.clientY);if(a&&tool!=='sloop'){const kp=king.position.clone();kp.y+=.6;shoot(kp,a,2)}else click(tileAt(e.clientX,e.clientY))}down=null});
+cvs.addEventListener('pointermove',e=>{cvs.style.cursor=animalAt(e.clientX,e.clientY)?'crosshair':''});
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
 cvs.addEventListener('wheel',e=>{e.preventDefault();cam.dist*=1+(e.deltaY>0?1:-1)*Math.min(.15,Math.abs(e.deltaY)*.0025)},{passive:false});
 const keys={};addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'){setTool(null);document.getElementById('info').style.display='none'}});addEventListener('keyup',e=>keys[e.code]=false);
@@ -384,7 +425,7 @@ function click(t){if(!t)return;const{i,j}=t;
   if(!tool){const b=bAt(i,j);if(b)showInfo(b);else document.getElementById('info').style.display='none';return}
   if(tool==='kap'){if(S.tiles[idx(i,j)]===1){S.tiles[idx(i,j)]=0;buildTileMesh(i,j);refreshTufts(i,j);S.hout+=3;floatTxt('+3 🪵',i,j);sfx(300)}else msg('Hier staat geen boom');return}
   if(tool==='sloop'){const b=bAt(i,j);if(!b)return;if(b.t==='kamp'){msg('Het kampvuur blijft staan');return}
-    S.bld.splice(S.bld.indexOf(b),1);world.remove(bldObj.get(b));bldObj.delete(b);refreshTufts(i,j);pay(B[b.t].cost,-.5);sfx(90);save();return}
+    S.bld.splice(S.bld.indexOf(b),1);world.remove(bldObj.get(b));bldObj.delete(b);foot(b.t,b.i,b.j,refreshTufts);pay(B[b.t].cost,-.5);sfx(90);save();return}
   const why=canPlace(tool,i,j);if(why){msg(why);return}
   pay(B[tool].cost);const b={t:tool,i,j,r:(Math.round(cam.yaw/(Math.PI/2))*Math.PI/2),prog:0};S.bld.push(b);addBldMesh(b);sfx(520);save();
   msg('👑 De koning beveelt: bouw een '+B[tool].n.toLowerCase()+'!');
@@ -428,9 +469,9 @@ function sim(dt){
   const smid=S.bld.filter(b=>b.t==='smid'&&done(b));
   // werkers verdelen: eerst eten
   let free=S.pop;const order=['boer','visser','bakker','hakker','groeve','markt','smid'];
-  for(const t of order)for(const b of S.bld)if(b.t===t&&done(b)){const n=Math.min(free,B[t].jobs);b.w=n;free-=n}
+  order.push('jager');for(const t of order)for(const b of S.bld)if(b.t===t&&done(b)){const n=Math.min(free,B[t].jobs);b.w=n;free-=n}
   boost=smid.reduce((a,b)=>a+(b.w||0)/3*.25,0);boost=Math.min(boost,.75);
-  if(S.eten<=0)joy-=40;if(S.pop>cap)joy-=20;
+  if(S.eten<=0)joy-=40;if(S.wolf)joy-=15;if(S.pop>cap)joy-=20;
   joy=Math.max(0,Math.min(100,joy));
   rates={hout:0,steen:0,eten:-S.pop*.11,goud:0};
   for(const b of S.bld)if(done(b))for(const[k,v]of Object.entries(prodOf(b)))rates[k]+=v;
@@ -474,7 +515,7 @@ function workSpot(b){const R=()=>Math.random()-.5;
   if(b.t==='visser')return rotL(b,.4+Math.random()*.5,.62);
   if(b.t==='markt'){const s=[[-.5,-.2],[.5,-.2],[-.5,.7],[.5,.7]][Math.random()*4|0];return rotL(b,s[0],s[1])}
   return rotL(b,R()*.6,1.05)}
-const doorOf=b=>rotL(b,0,b.t==='kamp'?.85:.95);
+const doorOf=b=>rotL(b,0,b.t==='kamp'?.85:b.t==='kasteel'?.5:.95);
 function leisure(){const P=S.bld.filter(b=>done(b)&&['markt','put','park','kerk','kamp','toren','bakker'].includes(b.t));const b=P.length?P[Math.random()*P.length|0]:S.bld[0];const p=rotL(b,(Math.random()-.5)*1.6,(Math.random()-.5)*1.6+.9);return p}
 let assignT=0;
 function assignFolk(){const homes=[];for(const b of S.bld)if(done(b)&&B[b.t].cap)for(let k=0;k<B[b.t].cap;k++)homes.push(b);
@@ -513,6 +554,80 @@ function workAnim(f,dt,t){const b=f.job;f.legs[0].rotation.x=f.legs[1].rotation.
   else if(b.t==='visser'){f.g.rotation.y=(b.r||0);f.tool.visible=true;f.tool.scale.y=3;f.arms[1].rotation.x=-1.2+Math.sin(t*.8+f.ph)*.08;f.arms[0].rotation.x=-.6}
   else{f.arms[0].rotation.x=Math.sin(t*3+f.ph)*.6-.3;f.arms[1].rotation.x=-Math.sin(t*3+f.ph)*.6-.3;f.pivot.rotation.x=0;const d=new THREE.Vector3(tx(b.i),0,tz(b.j)).sub(f.g.position);if(b.t==='markt')f.g.rotation.y=Math.atan2(-d.x,-d.z)}}
 
+/* ================= WILDE DIEREN ================= */
+function inner_noop(){}
+const AT={
+ konijn:{n:'Konijn',hp:1,food:4,sp:2.6,max:6,w:1},
+ hert:{n:'Hert',hp:2,food:15,sp:2.4,max:5,w:1},
+ zwijn:{n:'Everzwijn',hp:3,food:22,sp:1.8,max:3,w:1},
+ wolf:{n:'Wolf',hp:3,food:0,gold:8,sp:2.6,max:3,bad:1},
+ beer:{n:'Beer',hp:7,food:45,sp:1.3,max:1,w:1},
+};
+const animals=[];const animGroup=new THREE.Group();scene.add(animGroup);
+function quad(g,col,L,H,Wd,legH,legW=.04){const m=MC(col);const body=new THREE.Mesh(new THREE.BoxGeometry(Wd,H,L),m);body.position.y=legH+H/2;body.castShadow=true;g.add(body);
+  const legs=[];for(const[x,z]of[[-1,-1],[1,-1],[-1,1],[1,1]]){const l=new THREE.Group();l.position.set(x*(Wd/2-legW/2),legH,z*(L/2-legW));const lm=new THREE.Mesh(new THREE.BoxGeometry(legW,legH,legW),m);lm.position.y=-legH/2;lm.castShadow=true;l.add(lm);g.add(l);legs.push(l)}
+  return{body,legs}}
+function mkAnimal(type){const g=new THREE.Group();let r;
+  if(type==='konijn'){r=quad(g,0xa08a70,.16,.1,.1,.04,.03);const h=new THREE.Mesh(new THREE.SphereGeometry(.06,8,6),MC(0xa08a70));h.position.set(0,.16,.09);g.add(h);for(const x of[-.02,.02]){const e=new THREE.Mesh(new THREE.BoxGeometry(.02,.1,.01),MC(0xb89a80));e.position.set(x,.24,.08);g.add(e)}const t=new THREE.Mesh(new THREE.SphereGeometry(.03,6,4),MC(0xffffff));t.position.set(0,.12,-.09);g.add(t)}
+  if(type==='hert'){r=quad(g,0x9a6a3a,.5,.2,.16,.3);const n=new THREE.Mesh(new THREE.BoxGeometry(.08,.22,.08),MC(0x9a6a3a));n.position.set(0,.55,.25);n.rotation.x=-.4;g.add(n);const h=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.17),MC(0x8a5a2a));h.position.set(0,.67,.32);g.add(h);
+    for(const x of[-1,1]){const a=new THREE.Mesh(new THREE.CylinderGeometry(.01,.015,.22,4),MC(0xe8dcc0));a.position.set(x*.06,.8,.27);a.rotation.z=x*-.4;g.add(a);const a2=new THREE.Mesh(new THREE.CylinderGeometry(.008,.01,.1,4),MC(0xe8dcc0));a2.position.set(x*.1,.86,.32);a2.rotation.x=.6;g.add(a2)}
+    const t=new THREE.Mesh(new THREE.BoxGeometry(.05,.06,.04),MC(0xffffff));t.position.set(0,.47,-.26);g.add(t)}
+  if(type==='zwijn'){r=quad(g,0x3a2a22,.42,.22,.2,.12,.05);const h=new THREE.Mesh(new THREE.BoxGeometry(.15,.15,.16),MC(0x3a2a22));h.position.set(0,.24,.27);g.add(h);const sn=new THREE.Mesh(new THREE.CylinderGeometry(.04,.045,.05,8),MC(0x6a4a3a));sn.rotation.x=Math.PI/2;sn.position.set(0,.21,.37);g.add(sn);
+    for(const x of[-1,1]){const tk=new THREE.Mesh(new THREE.ConeGeometry(.012,.07,4),MC(0xf0e8d0));tk.position.set(x*.05,.2,.36);tk.rotation.x=-1;g.add(tk)}const ri=new THREE.Mesh(new THREE.BoxGeometry(.04,.06,.36),MC(0x22160f));ri.position.set(0,.37,0);g.add(ri)}
+  if(type==='wolf'){r=quad(g,0x707478,.42,.16,.13,.2);const h=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.13),MC(0x606468));h.position.set(0,.42,.25);g.add(h);const sn=new THREE.Mesh(new THREE.BoxGeometry(.06,.06,.1),MC(0x505458));sn.position.set(0,.39,.35);g.add(sn);
+    for(const x of[-1,1]){const e=new THREE.Mesh(new THREE.ConeGeometry(.025,.07,4),MC(0x505458));e.position.set(x*.04,.51,.23);g.add(e);const ey=new THREE.Mesh(new THREE.SphereGeometry(.012,6,4),new THREE.MeshBasicMaterial({color:0xffd040}));ey.position.set(x*.035,.44,.315);g.add(ey)}
+    const t=new THREE.Mesh(new THREE.CylinderGeometry(.03,.015,.25,6),MC(0x707478));t.position.set(0,.3,-.3);t.rotation.x=-1;g.add(t)}
+  if(type==='beer'){r=quad(g,0x4a3020,.7,.38,.36,.22,.11);const h=new THREE.Mesh(new THREE.SphereGeometry(.15,10,8),MC(0x4a3020));h.position.set(0,.55,.42);g.add(h);const sn=new THREE.Mesh(new THREE.BoxGeometry(.1,.08,.12),MC(0x7a5a40));sn.position.set(0,.51,.55);g.add(sn);
+    for(const x of[-1,1]){const e=new THREE.Mesh(new THREE.SphereGeometry(.045,6,4),MC(0x4a3020));e.position.set(x*.1,.68,.4);g.add(e)}const hump=new THREE.Mesh(new THREE.SphereGeometry(.17,8,6),MC(0x4a3020));hump.position.set(0,.56,.15);g.add(hump)}
+  g.traverse(o=>{if(o.isMesh)o.userData.animal=true});animGroup.add(g);
+  return{g,type,hp:AT[type].hp,legs:r.legs,ph:Math.random()*6,to:null,wait:Math.random()*3,flee:0,dead:0,home:null}}
+const ringPos=()=>{const a=Math.random()*Math.PI*2,r=W/2+3+Math.random()*7;return new THREE.Vector3(Math.cos(a)*r*1.1,0,Math.sin(a)*r*1.1)};
+function freeSpot(p){const i=Math.floor(p.x/TS+N/2),j=Math.floor(p.z/TS+N/2);if(!inMap(i,j))return Math.max(Math.abs(p.x),Math.abs(p.z))<W/2+22;return S.tiles[idx(i,j)]!==3&&!bAt(i,j)}
+function spawnAnimal(type){let p;
+  if(type!=='wolf'&&Math.random()<.75){const trees=[];for(let k=0;k<N*N;k++)if(S.tiles[k]===1)trees.push(k);if(trees.length){const k=trees[Math.random()*trees.length|0];p=new THREE.Vector3(tx(k%N)+(Math.random()-.5)*1.5,0,tz(k/N|0)+(Math.random()-.5)*1.5)}}
+  if(!p)p=ringPos();const a=mkAnimal(type);a.g.position.copy(p);a.home=p.clone();a.g.rotation.y=Math.random()*6;animals.push(a)}
+let spawnT=0,wolfWarn=0;
+function hitAnimal(a,dmg,from){if(a.dead)return;a.hp-=dmg;a.flee=3;a.fleeFrom=from.clone();sfx(180,.12);
+  if(a.hp<=0){a.dead=.001;const d=AT[a.type];S.kills=(S.kills||0)+1;let txt='';if(d.food){S.eten+=d.food;txt+='+'+d.food+' 🍞 '}if(d.gold){S.goud+=d.gold;txt+='+'+d.gold+' 🪙'}floatAt(txt.trim()||d.n,a.g.position);msg((d.bad?'🐺 ':'🏹 ')+d.n+' gevangen!'+(d.bad?' Beloning van het dorp.':''));sfx(90,.2)}}
+// pijlen
+const arrows=[];const arrowGeo=new THREE.CylinderGeometry(.008,.008,.35,4);arrowGeo.rotateX(Math.PI/2);const arrowMat=M({color:0x6a4a2a});
+function shoot(from,a,dmg){const ar=new THREE.Mesh(arrowGeo,arrowMat);const f=from.clone();ar.position.copy(f);scene.add(ar);const tgt=a.g.position.clone();tgt.y+=.25;
+  arrows.push({m:ar,from:f,to:tgt,a,dmg,t:0,dur:Math.max(.25,f.distanceTo(tgt)/22)});sfx(900,.05)}
+function updArrows(dt){for(let i=arrows.length-1;i>=0;i--){const r=arrows[i];r.t+=dt/r.dur;const k=Math.min(1,r.t);if(!r.a.dead){r.to.copy(r.a.g.position);r.to.y+=.25}
+  const p=r.from.clone().lerp(r.to,k);p.y+=Math.sin(k*Math.PI)*r.from.distanceTo(r.to)*.12;const prev=r.m.position.clone();r.m.position.copy(p);if(p.distanceTo(prev)>1e-4)r.m.lookAt(p.clone().add(p.clone().sub(prev)));
+  if(k>=1){scene.remove(r.m);arrows.splice(i,1);hitAnimal(r.a,r.dmg,r.from)}}}
+function floatAt(s,pos){const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');x.font='bold 36px system-ui';x.textAlign='center';x.lineWidth=6;x.strokeStyle='rgba(0,0,0,.7)';x.strokeText(s,128,44);x.fillStyle='#fff';x.fillText(s,128,44);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));sp.scale.set(3,.75,1);sp.position.copy(pos).add(new THREE.Vector3(0,1,0));scene.add(sp);floats.push({sp,t:1.6})}
+let hunterT=0;
+function updAnimals(dt,isNight,t){
+  spawnT-=dt;if(spawnT<=0){spawnT=5;for(const[k,d]of Object.entries(AT)){const n=animals.filter(a=>a.type===k&&!a.dead).length;if(n<d.max&&(k!=='wolf'||isNight||Math.random()<.2)){spawnAnimal(k);break}}}
+  const kp=king.position;const home=S.bld.find(b=>b.t==='kamp');const hp=home?new THREE.Vector3(tx(home.i),0,tz(home.j)):new THREE.Vector3();
+  let wolfIn=false;
+  for(let i=animals.length-1;i>=0;i--){const a=animals[i],g=a.g,p=g.position,d=AT[a.type];
+    if(a.dead){a.dead+=dt;g.rotation.z=Math.min(Math.PI/2,a.dead*5);if(a.dead>5){g.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=Math.max(0,1-(a.dead-5))}})}if(a.dead>6){animGroup.remove(g);animals.splice(i,1)}continue}
+    let speed=d.sp*.25,dest=null;
+    if(a.flee>0){a.flee-=dt;speed=d.sp;const away=p.clone().sub(a.fleeFrom);away.y=0;if(away.lengthSq()<.01)away.set(Math.random()-.5,0,Math.random()-.5);dest=p.clone().add(away.setLength(3))}
+    else if(a.type==='wolf'&&isNight){let best=null,bd=1e9;for(const f of folk)if(f.g.visible){const dd=f.g.position.distanceToSquared(p);if(dd<bd){bd=dd;best=f}}if(best&&bd<400){dest=best.g.position.clone();speed=d.sp*.6;if(bd<.5){best.to=null;best.state='flee';best.wait=0}}}
+    else{if(p.distanceTo(kp)<1.6&&a.type!=='wolf'&&a.type!=='beer'){a.flee=1.5;a.fleeFrom=kp.clone()}
+      if(!a.to){a.wait-=dt;if(a.wait<=0){a.to=a.home.clone().add(new THREE.Vector3((Math.random()-.5)*8,0,(Math.random()-.5)*8));if(a.type==='wolf'&&!isNight)a.to=ringPos()}}
+      dest=a.to}
+    if(a.type==='wolf'&&p.distanceTo(hp)<14)wolfIn=true;
+    if(dest){const v=dest.clone().sub(p);v.y=0;const l=v.length();
+      if(l<.1){a.to=null;a.wait=2+Math.random()*5}
+      else{v.multiplyScalar(1/l);const np=p.clone().addScaledVector(v,Math.min(l,speed*dt));
+        if(freeSpot(np)){p.x=np.x;p.z=np.z}else{a.to=null;a.wait=.5;if(a.flee>0)a.fleeFrom.copy(np)}
+        g.rotation.y=Math.atan2(v.x,v.z);a.ph+=dt*speed*9;const sw=Math.sin(a.ph)*.6;a.legs[0].rotation.x=a.legs[3].rotation.x=sw;a.legs[1].rotation.x=a.legs[2].rotation.x=-sw;
+        if(a.type==='konijn')p.y=hgt(p.x,p.z)+Math.abs(Math.sin(a.ph))*.08;else p.y=hgt(p.x,p.z)}}
+    else{a.legs.forEach(l=>l.rotation.x=0);p.y=hgt(p.x,p.z)}
+  }
+  if(wolfIn){wolfWarn-=dt;if(wolfWarn<=0){wolfWarn=25;msg('🐺 Er sluipen wolven rond het dorp! Klik erop om ze te verjagen.')}}
+  S.wolf=wolfIn;
+  // jagers
+  hunterT-=dt;if(hunterT<=0){hunterT=2.2;for(const b of S.bld)if(b.t==='jager'&&done(b)&&b.w){const bp=new THREE.Vector3(tx(b.i),.5,tz(b.j));let best=null,bd=14*14;for(const a of animals)if(!a.dead){const dd=a.g.position.distanceToSquared(bp);if(dd<bd){bd=dd;best=a}}
+    if(best)for(let k=0;k<b.w;k++)if(Math.random()<.6)shoot(bp.clone().add(new THREE.Vector3((Math.random()-.5)*.6,0,(Math.random()-.5)*.6)),best,1)}}
+  updArrows(dt);
+}
+
 /* ================= KONING & BEDIENDEN ================= */
 const servants=[];
 function mkServant(){const g=new THREE.Group();
@@ -531,7 +646,7 @@ function updServants(dt,t){
   for(const v of servants){
     if(v.job&&(done(v.job)||!S.bld.includes(v.job))){v.job=null;v.at=false}
     if(!v.job&&sites.length){ // kies bouwplaats met minste bedienden, oudste eerst
-      let best=null,bn=1e9;for(const b of sites){const n=servants.filter(o=>o.job===b).length;if(n<bn){bn=n;best=b}}v.job=best;v.at=false;v.off=new THREE.Vector3((Math.random()-.5)*1.6,0,(Math.random()<.5?-1:1)*1.05)}
+      let best=null,bn=1e9;for(const b of sites){const n=servants.filter(o=>o.job===b).length;if(n<bn){bn=n;best=b}}v.job=best;v.at=false;v.off=new THREE.Vector3((Math.random()-.5)*1.6,0,(Math.random()<.5?-1:1)*1.05);if(FP[best.t])v.off.multiplyScalar(2.9)}
     const g=v.g,p=g.position;let dest=null;
     if(v.job)dest=new THREE.Vector3(tx(v.job.i),0,tz(v.job.j)).add(v.off);
     else{const k=S.bld.find(b=>b.t==='kasteel'&&done(b))||S.bld.find(b=>b.t==='kamp');v.idle-=dt;if(!v.home||v.idle<0){v.idle=4+Math.random()*4;v.home=new THREE.Vector3(tx(k.i)+(Math.random()-.5)*3,0,tz(k.j)+1.4+Math.random()*1.2)}dest=v.home}
@@ -626,14 +741,14 @@ function loop(){const dt=Math.min(clock.getDelta(),.1);const t=clock.elapsedTime
   if(keys.KeyQ)cam.yaw+=1.6*dt;if(keys.KeyE)cam.yaw-=1.6*dt;
   updCam();
   const isNight=dayNight();
-  updFolk(dt,isNight);if(!paused){updServants(dt,t);updKing(dt,isNight)}
+  updFolk(dt,isNight);if(!paused){updServants(dt,t);updKing(dt,isNight);updAnimals(dt,isNight,t)}
   // hover
-  if(hover&&tool){hl.visible=true;hl.position.x=tx(hover.i);hl.position.z=tz(hover.j);
+  if(hover&&tool){hl.visible=true;hl.position.x=tx(hover.i);hl.position.z=tz(hover.j);hl.scale.setScalar(FP[tool]?3:1);
     const bad=tool==='kap'?S.tiles[idx(hover.i,hover.j)]!==1:tool==='sloop'?!bAt(hover.i,hover.j):!!canPlace(tool,hover.i,hover.j);
     hlMat.color.set(bad?0xff4a3a:0x6fe06f);ghost.visible=!!ghostType;ghost.position.set(tx(hover.i),0,tz(hover.j));ghost.rotation.y=Math.round(cam.yaw/(Math.PI/2))*Math.PI/2}
   else{hl.visible=false;ghost.visible=false}
   // animaties
-  for(const[b,g]of bldObj){if(g.scale.x!==1)g.scale.setScalar(Math.abs(g.scale.x-1)<.003?1:g.scale.x+(1-g.scale.x)*Math.min(1,dt*6));if(g.userData.fire)g.userData.fire.scale.set(1,1+Math.sin(t*12)*.15,1);if(g.userData.flag)g.userData.flag.rotation.y=Math.sin(t*3)*.3}
+  for(const[b,g]of bldObj){if(g.scale.x!==1)g.scale.setScalar(Math.abs(g.scale.x-1)<.003?1:g.scale.x+(1-g.scale.x)*Math.min(1,dt*6));if(g.userData.fire)g.userData.fire.scale.set(1,1+Math.sin(t*12)*.15,1);if(g.userData.flag)g.userData.flag.rotation.y=Math.sin(t*3)*.3;if(g.userData.flags)g.userData.flags.forEach((f,k)=>f.rotation.y=Math.sin(t*3+k)*.3)}
   for(let i=floats.length-1;i>=0;i--){const f=floats[i];f.t-=dt;f.sp.position.y+=dt*1.5;f.sp.material.opacity=Math.min(1,f.t);if(f.t<=0){scene.remove(f.sp);floats.splice(i,1)}}
   waterMat.uniforms.t.value=t;
   sky.position.copy(camera.position);
@@ -641,7 +756,7 @@ function loop(){const dt=Math.min(clock.getDelta(),.1);const t=clock.elapsedTime
   composer.render();requestAnimationFrame(loop)}
 loop();
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});
-window.__bd={servants,king,updServants,sim,get S(){return S},B,setTool,click,cam,bAt};
+window.__bd={animals,spawnAnimal,updAnimals,shoot,servants,king,updServants,sim,get S(){return S},B,setTool,click,cam,bAt};
 </script>
 </body>
 </html>
